@@ -19,10 +19,14 @@ export class NotepadPanel {
     this._postNotesList();
   }
 
-  static createOrShow(context: vscode.ExtensionContext): void {
+  static createOrShow(context: vscode.ExtensionContext, noteId?: string): void {
     if (NotepadPanel.currentPanel) {
       NotepadPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
-      NotepadPanel.currentPanel._postNotesList();
+      if (noteId) {
+        NotepadPanel.currentPanel._postNoteById(noteId);
+      } else {
+        NotepadPanel.currentPanel._postNotesList();
+      }
       return;
     }
     const panel = vscode.window.createWebviewPanel(
@@ -32,6 +36,10 @@ export class NotepadPanel {
       { enableScripts: true, retainContextWhenHidden: true },
     );
     NotepadPanel.currentPanel = new NotepadPanel(panel, context);
+    // If noteId provided, wait for panel initialization then open
+    if (noteId) {
+      setTimeout(() => NotepadPanel.currentPanel?._postNoteById(noteId), 100);
+    }
   }
 
   private dispose(): void {
@@ -48,6 +56,14 @@ export class NotepadPanel {
 
   private _postNote(note: any): void {
     this._panel.webview.postMessage({ type: 'openNote', data: note });
+  }
+
+  private _postNoteById(id: string): void {
+    const store = NoteStore.getInstance();
+    const note = store.get(id);
+    if (note) {
+      this._postNote(note);
+    }
   }
 
   private async _handleMessage(msg: any): Promise<void> {
@@ -98,8 +114,8 @@ export class NotepadPanel {
   .search-box { margin: 8px 16px; padding: 6px 8px; width: calc(100% - 32px); border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); border-radius: 4px; font-size: 13px; }
   .note-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid var(--vscode-widget-border); }
   .note-item:hover { background: var(--vscode-list-hoverBackground); }
-  .note-title { font-weight: 600; margin-bottom: 2px; }
-  .note-date { font-size: 11px; color: var(--vscode-descriptionForeground); }
+  .note-title { font-weight: 600; margin-bottom: 2px; display: block; }
+  .note-date { font-size: 11px; color: var(--vscode-descriptionForeground); display: block; }
   #editView { display: none; }
   #listView { display: block; }
   .edit-header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--vscode-widget-border); gap: 8px; }

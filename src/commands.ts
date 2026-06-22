@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { ConfigPanel } from './panels/configPanel';
-import { NotepadPanel } from './panels/notepadPanel';
+import { NotepadPanel } from './panels/notePadPanel';
 import { TodoPanel } from './panels/todoPanel';
 import { StockDetailPanel } from './views/stockDetailPanel';
 import { PoolStock } from './views/stockTree';
+import { TodoStore } from './store/todoStore';
 import { registerNoteCommands } from './cli/noteCli';
 import { registerTodoCommands } from './cli/todoCli';
 import { SyncManager } from './server/sync';
@@ -32,8 +33,8 @@ export function registerCommands(context: vscode.ExtensionContext): void {
     }),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand('personal-vscode-helper.openNotepad', () => {
-      NotepadPanel.createOrShow(context);
+    vscode.commands.registerCommand('personal-vscode-helper.openNotepad', (noteId?: string) => {
+      NotepadPanel.createOrShow(context, noteId);
     }),
   );
   context.subscriptions.push(
@@ -51,6 +52,18 @@ export function registerCommands(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('vcs-manager.stock.refresh', () => {
       stockPollerRef?.refresh();
+    }),
+  );
+
+  // ── Todo 切换命令（供侧边栏使用） ──
+  context.subscriptions.push(
+    vscode.commands.registerCommand('personal-vscode-helper.todo.toggle', (id: string) => {
+      const store = TodoStore.getInstance();
+      const todo = store.toggle(id);
+      vscode.window.showInformationMessage(
+        todo.done ? '☑ 已标记完成' : '☐ 已取消完成',
+      );
+      return todo;
     }),
   );
 

@@ -5,6 +5,8 @@ import { NoteStore } from './store/noteStore';
 import { TodoStore } from './store/todoStore';
 import { StockDataProvider } from './views/stockTree';
 import { StockPoller } from './views/stockPoller';
+import { NoteTreeProvider } from './views/noteTree';
+import { TodoTreeProvider } from './views/todoTree';
 import { SyncManager } from './server/sync';
 import { registerCommands, setStockPoller, setSyncManager } from './commands';
 import { updateDashboard, initTimer } from './views/statusBarItems';
@@ -56,6 +58,22 @@ export function activate(context: vscode.ExtensionContext) {
 	const stockProvider = new StockDataProvider();
 	context.subscriptions.push(
 		vscode.window.registerTreeDataProvider('stockView', stockProvider),
+	);
+
+	// 记事本 / Todo 侧边栏 TreeView
+	const noteTreeProvider = new NoteTreeProvider();
+	context.subscriptions.push(
+		vscode.window.registerTreeDataProvider('notepadView', noteTreeProvider),
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('personal-vscode-helper.note.refresh', () => noteTreeProvider.refresh()),
+	);
+	const todoTreeProvider = new TodoTreeProvider();
+	context.subscriptions.push(
+		vscode.window.registerTreeDataProvider('todoView', todoTreeProvider),
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('personal-vscode-helper.todo.refresh', () => todoTreeProvider.refresh()),
 	);
 
 	// M7-1: 项目仪表盘

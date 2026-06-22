@@ -176,6 +176,20 @@
         "title": "待办：清空已完成"
       },
       {
+        "command": "personal-vscode-helper.todo.toggle",
+        "title": "待办：切换完成状态"
+      },
+      {
+        "command": "personal-vscode-helper.note.refresh",
+        "title": "笔记：刷新侧边栏",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "personal-vscode-helper.todo.refresh",
+        "title": "待办：刷新侧边栏",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "personal-vscode-helper.syncNow",
         "title": "同步：手动触发服务端同步"
       },
@@ -255,9 +269,19 @@
           "group": "navigation"
         },
         {
+          "command": "personal-vscode-helper.note.refresh",
+          "when": "view == notepadView",
+          "group": "inline"
+        },
+        {
           "command": "personal-vscode-helper.openTodo",
           "when": "view == todoView",
           "group": "navigation"
+        },
+        {
+          "command": "personal-vscode-helper.todo.refresh",
+          "when": "view == todoView",
+          "group": "inline"
         },
         {
           "command": "vcs-manager.plastic.refresh",
@@ -377,6 +401,18 @@
         },
         {
           "command": "personal-vscode-helper.todo.clearCompleted",
+          "when": "true"
+        },
+        {
+          "command": "personal-vscode-helper.todo.toggle",
+          "when": "true"
+        },
+        {
+          "command": "personal-vscode-helper.note.refresh",
+          "when": "true"
+        },
+        {
+          "command": "personal-vscode-helper.todo.refresh",
           "when": "true"
         },
         {
