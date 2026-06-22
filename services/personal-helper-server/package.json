@@ -1,6 +1,6 @@
 {
   "name": "personal-helper-server",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "轻量记事本 + Todo 后端服务，CLI + REST",
   "private": false,
   "publishConfig": {
@@ -8,7 +8,7 @@
   },
   "type": "module",
   "bin": {
-    "phelper": "./src/cli.ts"
+    "phelper": "./dist/cli.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

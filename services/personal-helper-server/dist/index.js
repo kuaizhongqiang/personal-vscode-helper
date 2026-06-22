@@ -2,6 +2,7 @@ import express from 'express';
 import healthRouter from './routes/health.js';
 import notesRouter from './routes/notes.js';
 import todosRouter from './routes/todos.js';
+import stocksRouter from './routes/stocks.js';
 /* ─── Auth ─── */
 function getToken() {
     const envToken = process.env.API_TOKEN;
@@ -28,6 +29,7 @@ export function createApp() {
     app.use('/api/health', healthRouter);
     app.use('/api/notes', authMiddleware, notesRouter);
     app.use('/api/todos', authMiddleware, todosRouter);
+    app.use('/api/stocks', authMiddleware, stocksRouter);
     return app;
 }
 // Only start when executed directly (not when imported by CLI)
@@ -40,5 +42,6 @@ if (isDirectRun) {
         console.log(`   📝 笔记 API:   http://localhost:${PORT}/api/notes`);
         console.log(`   ✅ Todo  API:  http://localhost:${PORT}/api/todos`);
         console.log(`   ❤️  健康检查:  http://localhost:${PORT}/api/health`);
+        console.log(`   📈 股票数据:   http://localhost:${PORT}/api/stocks/overview`);
     });
 }

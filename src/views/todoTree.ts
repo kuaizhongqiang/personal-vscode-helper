@@ -5,10 +5,19 @@ import { TodoStore, TodoItem } from '../store/todoStore';
 
 class TodoTreeItem extends vscode.TreeItem {
   constructor(public readonly todo: TodoItem) {
-    const prefix = todo.done ? '☑ ' : '☐ ';
-    super(`${prefix}${todo.content}`, vscode.TreeItemCollapsibleState.None);
+    super(todo.content, vscode.TreeItemCollapsibleState.None);
+
     this.description = todo.group;
-    this.tooltip = `${todo.done ? '已完成' : '未完成'} | 分组: ${todo.group}`;
+
+    // 完成状态图标 + 颜色
+    if (todo.done) {
+      this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+      this.tooltip = `✅ 已完成 | 分组: ${todo.group}`;
+    } else {
+      this.iconPath = new vscode.ThemeIcon('circle-outline');
+      this.tooltip = `⏳ 未完成 | 分组: ${todo.group}`;
+    }
+
     this.command = {
       command: 'personal-vscode-helper.todo.toggle',
       title: '切换完成状态',

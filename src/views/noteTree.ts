@@ -23,6 +23,11 @@ export class NoteTreeProvider implements vscode.TreeDataProvider<NoteTreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<NoteTreeItem | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  constructor() {
+    // 笔记数据变更时自动刷新侧边栏
+    NoteStore.getInstance().onDidChange(() => this.refresh());
+  }
+
   refresh(): void {
     this._onDidChangeTreeData.fire(undefined);
   }

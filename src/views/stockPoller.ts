@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getStockClient } from '../server/endpoints';
+import { getHelperClient, getStockClient } from '../server/endpoints';
 import { StockDataProvider, StockOverviewResponse } from './stockTree';
 
 /**
@@ -64,8 +64,8 @@ export class StockPoller {
 
   private async fetchOverview(): Promise<void> {
     try {
-      const client = getStockClient();
-      const data = await client.get<StockOverviewResponse>('/api/v1/pools/overview');
+      const client = getHelperClient();
+      const data = await client.get<StockOverviewResponse>('/api/stocks/overview');
       // Cache codes for batch refresh
       this.cachedCodes = data.flatMap(p => p.stocks.map(s => s.code));
       this.provider.updateData(data);

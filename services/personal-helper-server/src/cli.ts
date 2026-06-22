@@ -5,7 +5,21 @@ import { createApp } from './index.js';
 
 const program = new Command();
 
-program.name('phelper').description('个人助手服务 CLI').version('0.1.0');
+program.name('phelper').description('个人助手服务 CLI').version('0.2.0');
+
+/* ─── Encoding fix for Windows CLI ─── */
+function fixEncoding(str: string): string {
+  // Windows 终端编码（如 CP936/GBK）与 Node.js UTF-8 不一致时，
+  // 参数中的中文字符会显示为 �（替换字符）
+  if (!str.includes('�')) return str;
+  try {
+    // 将已损坏的字符串当作 Latin-1 读出字节，再用 GBK 解码
+    const buf = Buffer.from(str, 'latin1');
+    const decoded = new TextDecoder('gbk').decode(buf);
+    if (!decoded.includes('�')) return decoded;
+  } catch { /* fall through */ }
+  return str;
+}
 
 /* ─── server ─── */
 const serverCmd = program.command('server').description('管理服务');
@@ -36,6 +50,8 @@ const noteCmd = program.command('note').description('管理笔记');
 noteCmd.command('create')
   .description('创建笔记').argument('<title>', '笔记标题').argument('<content>', '笔记内容')
   .action((title: string, content: string) => {
+    title = fixEncoding(title);
+    content = fixEncoding(content);
     const data = load();
     const now = new Date().toISOString();
     const note: Note = { id: genId(), title, content, created_at: now, updated_at: now };

@@ -15,6 +15,10 @@ let _instance: NoteStore | null = null;
 export class NoteStore {
   private context: vscode.ExtensionContext;
 
+  /** 数据变更事件（供侧边栏 TreeView 等订阅刷新） */
+  private _onDidChange = new vscode.EventEmitter<void>();
+  readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
+
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
   }
@@ -47,6 +51,7 @@ export class NoteStore {
     };
     notes.unshift(note);
     this.save(notes);
+    this._onDidChange.fire();
     return note;
   }
 
@@ -58,6 +63,7 @@ export class NoteStore {
     notes[idx].content = content;
     notes[idx].updatedAt = Date.now();
     this.save(notes);
+    this._onDidChange.fire();
     return notes[idx];
   }
 
@@ -67,6 +73,7 @@ export class NoteStore {
     if (idx === -1) throw new Error(`笔记不存在: ${id}`);
     notes.splice(idx, 1);
     this.save(notes);
+    this._onDidChange.fire();
   }
 
   search(keyword: string): Note[] {
@@ -79,6 +86,7 @@ export class NoteStore {
   /** 批量导入笔记（用于服务端同步合并） */
   importAll(notes: Note[]): void {
     this.save(notes);
+    this._onDidChange.fire();
   }
 
   /* ─── private ─── */

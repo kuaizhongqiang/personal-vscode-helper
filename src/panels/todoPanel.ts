@@ -193,7 +193,7 @@ export class TodoPanel {
           '<div class="todo-item' + (t.done ? ' done' : '') + '" data-id="' + t.id + '">' +
             '<input type="checkbox" class="todo-checkbox"' + (t.done ? ' checked' : '') + ' />' +
             '<span class="todo-content" data-id="' + t.id + '">' + escapeHtml(t.content) + '</span>' +
-            '<button class="btn-icon delete-btn" data-id="' + t.id + '" title="删除">✕</button>' +
+            '<button class="btn-icon delete-btn" data-id="' + t.id + '" title="删除">✕</button><button class="btn-icon save-todo-btn" data-id="' + t.id + '" title="保存" style="display:none">✓</button>' +
           '</div>';
       }
     }
@@ -212,6 +212,13 @@ export class TodoPanel {
       btn.addEventListener('click', function() {
         const id = this.dataset.id;
         vscode.postMessage({ type: 'deleteTodo', id, activeGroup });
+    /* --- save button for inline edit --- */
+    todoContainer.querySelectorAll('.save-todo-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const contentSpan = this.parentElement.querySelector('.todo-content');
+        if (contentSpan && contentSpan.getAttribute('contenteditable') === 'true') {
+          contentSpan.blur();
+        }
       });
     });
 
@@ -227,10 +234,16 @@ export class TodoPanel {
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
+        // Show save button
+        const saveBtn = this.parentElement.querySelector('.save-todo-btn');
+        if (saveBtn) saveBtn.style.display = 'inline';
       });
       span.addEventListener('blur', function() {
         if (this.getAttribute('contenteditable') !== 'true') return;
         this.removeAttribute('contenteditable');
+        // Hide save button
+        const saveBtn2 = this.parentElement.querySelector('.save-todo-btn');
+        if (saveBtn2) saveBtn2.style.display = 'none';
         const id = this.dataset.id;
         const content = this.textContent.trim();
         if (content) {

@@ -76,7 +76,8 @@ export class NotepadPanel {
         this._postNote(store.get(msg.id));
         break;
       case 'createNote':
-        store.create(msg.title, msg.content);
+        const created = store.create(msg.title, msg.content);
+        this._panel.webview.postMessage({ type: 'noteCreated', data: created });
         this._postNotesList();
         break;
       case 'updateNote':
@@ -84,8 +85,15 @@ export class NotepadPanel {
         this._postNotesList();
         break;
       case 'deleteNote':
-        store.delete(msg.id);
-        this._postNotesList();
+        const confirm = await vscode.window.showWarningMessage('确定删除这条笔记吗？', { modal: true }, '删除');
+        if (confirm) {
+          try {
+            store.delete(msg.id);
+          } catch (e: any) {
+            console.error('Delete failed:', e.message);
+          }
+          this._postNotesList();
+        }
         break;
       case 'searchNotes':
         this._postNotesList(msg.keyword);
@@ -124,6 +132,9 @@ export class NotepadPanel {
   .edit-body input[type="text"] { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); border-radius: 4px; font-size: 14px; font-weight: 600; }
   .edit-body textarea { width: 100%; min-height: 300px; padding: 8px; border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background); color: var(--vscode-input-foreground); border-radius: 4px; font-size: 13px; resize: vertical; font-family: inherit; line-height: 1.5; }
   .edit-meta { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 8px; }
+  .save-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+  .save-btn:hover { background: var(--vscode-button-hoverBackground); }
+  .save-btn.saved { background: var(--vscode-inputValidation-infoBackground); }
   .empty-state { text-align: center; padding: 40px 16px; color: var(--vscode-descriptionForeground); }
   .empty-state p { margin-bottom: 12px; }
 </style>
@@ -145,6 +156,7 @@ export class NotepadPanel {
   <div class="edit-header">
     <button class="btn-icon" id="backBtn">←</button>
     <h2 id="editTitle">编辑笔记</h2>
+    <button class="save-btn" id="saveBtn">保存</button>
     <button class="btn-icon" id="deleteBtn" title="删除">🗑</button>
   </div>
   <div class="edit-body">
@@ -231,6 +243,11 @@ export class NotepadPanel {
       case 'openNote':
         showEdit(msg.data);
         break;
+      case 'noteCreated':
+        currentNoteId = msg.data.id;
+        break;
+        showEdit(msg.data);
+        break;
     }
   });
 
@@ -244,12 +261,11 @@ export class NotepadPanel {
   // 返回列表
   $('backBtn').addEventListener('click', showList);
 
+
   // 删除
   $('deleteBtn').addEventListener('click', () => {
     if (!currentNoteId) return;
-    if (confirm('确定删除这条笔记吗？')) {
-      vscode.postMessage({ type: 'deleteNote', id: currentNoteId });
-    }
+    vscode.postMessage({ type: 'deleteNote', id: currentNoteId });
   });
 
   // 搜索（debounce）
@@ -283,6 +299,20 @@ export class NotepadPanel {
 
   noteTitleInput.addEventListener('input', autoSave);
   noteContentInput.addEventListener('input', autoSave);
+  /* --- save button --- */
+  $('saveBtn').addEventListener('click', () => {
+    if (!currentNoteId) return;
+    if (currentNoteId === '__saving__') return;
+    clearTimeout(debounceSave);
+    const title = noteTitleInput.value.trim();
+    const content = noteContentInput.value.trim();
+    if (!title && !content) return;
+    vscode.postMessage({ type: 'updateNote', id: currentNoteId, title, content });
+    const btn = $('saveBtn');
+    btn.textContent = '✓ 已保存';
+    btn.classList.add('saved');
+    setTimeout(() => { btn.textContent = '保存'; btn.classList.remove('saved'); }, 2000);
+  });
 })();
 </script>
 </body>
