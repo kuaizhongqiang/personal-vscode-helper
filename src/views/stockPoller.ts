@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getStockClient } from '../server/endpoints';
-import { StockDataProvider, StockPool, PoolStock, StockOverviewResponse } from './stockTree';
+import { StockDataProvider, StockOverviewResponse } from './stockTree';
 
 /**
  * 股票行情轮询管理器
@@ -82,8 +82,6 @@ export class StockPoller {
       const quotes = await client.get<any[]>(`/api/v1/stocks/batch?codes=${codes}`);
       if (!quotes || quotes.length === 0) return;
 
-      // Update prices in the cached provider data
-      const quoteMap = new Map(quotes.map(q => [q.code, q]));
       // We can't directly modify provider data; just trigger a full refresh
       // For price-only updates, we merge into what we have
       this.fetchOverview(); // Fallback: full refresh

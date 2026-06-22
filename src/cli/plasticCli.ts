@@ -81,9 +81,6 @@ export class PlasticCli implements CliWrapper {
 		const uri = (relativePath: string) => vscode.Uri.file(path.join(workspacePath, relativePath));
 
 		// 简单 XML 解析 —— 按 StatusItem 节点匹配
-		const itemRegex = /<StatusItem>[\s\S]*?<\/StatusItem>/g;
-		const matchItem = itemRegex.exec(xml);
-		// 对于每个 StatusItem，提取 Path 和 Status
 		let match: RegExpExecArray | null;
 		const re = /<StatusItem>[\s\S]*?<\/StatusItem>/g;
 		while ((match = re.exec(xml)) !== null) {

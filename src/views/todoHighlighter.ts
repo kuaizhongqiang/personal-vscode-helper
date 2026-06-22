@@ -54,8 +54,8 @@ const TAG_COLORS: Record<string, vscode.DecorationRenderOptions> = {
 
 const TAG_PATTERN = /\b(TODO|FIXME|HACK|NOTE):?\s*(.*)$/gm;
 
-let decorationTypes: Record<string, vscode.TextEditorDecorationType> = {};
-let highlightDisposables: vscode.Disposable[] = [];
+const decorationTypes: Record<string, vscode.TextEditorDecorationType> = {};
+// highlightDisposables removed — diposed via context.subscriptions
 let debounceScan: ReturnType<typeof setTimeout> | null = null;
 
 /* ─── TreeDataProvider for sidebar ─── */

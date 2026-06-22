@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { NoteStore, Note } from '../store/noteStore';
+import { NoteStore } from '../store/noteStore';
 
 let outputChannel: vscode.OutputChannel;
 

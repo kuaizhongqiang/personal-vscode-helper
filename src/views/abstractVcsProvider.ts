@@ -71,7 +71,7 @@ export abstract class AbstractVcsProvider implements vscode.TreeDataProvider<Vcs
 			const workspacePath = this.getWorkspacePath();
 			if (!workspacePath) return;
 
-			const result = await this.cli.commit(workspacePath, message);
+			await this.cli.commit(workspacePath, message);
 			vscode.window.showInformationMessage(`✅ ${this.name} 提交成功`);
 			await this.refresh();
 		} catch (err: any) {
@@ -85,7 +85,7 @@ export abstract class AbstractVcsProvider implements vscode.TreeDataProvider<Vcs
 			const workspacePath = this.getWorkspacePath();
 			if (!workspacePath) return;
 
-			const result = await this.cli.update(workspacePath);
+			await this.cli.update(workspacePath);
 			vscode.window.showInformationMessage(`✅ ${this.name} 更新成功`);
 			await this.refresh();
 		} catch (err: any) {

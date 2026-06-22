@@ -100,7 +100,6 @@ class CommandProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   }
 }
 
-let commandProviderInstance: CommandProvider | null = null;
 let commandContext: vscode.ExtensionContext | null = null;
 
 /* ─── Public API ─── */
@@ -108,7 +107,6 @@ let commandContext: vscode.ExtensionContext | null = null;
 export function initCommandCollection(context: vscode.ExtensionContext): CommandProvider {
   commandContext = context;
   const provider = new CommandProvider(context);
-  commandProviderInstance = provider;
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('commandCollectionView', provider),
   );
@@ -139,7 +137,6 @@ export function initCommandCollection(context: vscode.ExtensionContext): Command
       });
       if (!tag) return;
 
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
       const cwd = await vscode.window.showInputBox({
         prompt: '执行目录（可选）',
         value: '${workspaceFolder}',

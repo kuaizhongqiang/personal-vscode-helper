@@ -68,7 +68,6 @@ let lastActivity = 0;
 let sessionStart = Date.now();
 let activeProject = '';
 let timerItem: vscode.StatusBarItem | null = null;
-let activityTimer: ReturnType<typeof setInterval> | null = null;
 
 const TIMER_KEY = 'personal-helper.timeRecords';
 
@@ -108,7 +107,7 @@ export function initTimer(context: vscode.ExtensionContext): void {
   );
 
   // Periodic save
-  activityTimer = setInterval(() => {
+  setInterval(() => {
     updateDuration(context);
   }, SAVE_INTERVAL);
 
