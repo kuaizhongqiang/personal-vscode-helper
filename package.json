@@ -55,19 +55,14 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "vcs-manager",
-          "title": "版本管理",
-          "icon": "media/icon.svg"
-        },
-        {
-          "id": "toolbox",
-          "title": "工具面板",
+          "id": "workspace",
+          "title": "工作台",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "vcs-manager": [
+      "workspace": [
         {
           "id": "plasticView",
           "name": "Plastic SCM"
@@ -75,9 +70,7 @@
         {
           "id": "svnView",
           "name": "SVN"
-        }
-      ],
-      "toolbox": [
+        },
         {
           "id": "helperConfig",
           "name": "配置"
