@@ -1,6 +1,6 @@
 {
   "name": "personal-helper-server",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
   "description": "轻量记事本 + Todo 后端服务，CLI + REST",
   "private": false,
   "publishConfig": {
