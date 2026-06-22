@@ -19,6 +19,18 @@ jobs:
       - run: npm run lint
       - run: npm run compile
 
+  server-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: server
+      - run: npx tsc --noEmit
+        working-directory: server
+
   package:
     needs: build
     runs-on: ubuntu-latest
@@ -47,6 +59,23 @@ jobs:
       - run: npm ci
       - run: npm run compile
       - run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-github-release@v2
         with:
           files: "*.vsix"
+
+  server-publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/server-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+        working-directory: server
+      - run: npm publish
+        working-directory: server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

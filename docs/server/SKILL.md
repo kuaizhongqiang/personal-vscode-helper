@@ -7,6 +7,49 @@ description: "分析股票和市场。通过 dsa MCP 工具调用股票分析、
 
 通过 MCP 工具调用 daily_stock_analysis 的核心分析能力。
 
+## 配套服务
+
+本插件依赖两个后端服务：
+
+| 服务 | 用途 | 代码位置 |
+|------|------|---------|
+| **personal-helper-server** | 记事本 + Todo REST API + CLI | [`server/`](../../server/) |
+| **stock-analyzer** | 股票行情 + 分析数据 | 独立部署（已有） |
+
+### personal-helper-server
+
+轻量服务，数据存储在本地 JSON 文件（`~/.helper/data.json`）。
+
+**CLI 命令（`phelper`）：**
+
+| 命令 | 说明 |
+|------|------|
+| `note create <title> <content>` | 创建笔记 |
+| `note list` | 列出所有笔记 |
+| `note read <id>` | 查看笔记详情 |
+| `note update <id> [--title] [--content]` | 更新笔记 |
+| `note delete <id>` | 删除笔记 |
+| `note search <keyword>` | 搜索笔记 |
+| `todo create <group> <content>` | 创建待办 |
+| `todo list [--group]` | 列出待办 |
+| `todo check <id>` | 标记完成 |
+| `todo uncheck <id>` | 标记未完成 |
+| `todo delete <id>` | 删除待办 |
+| `todo list-groups` | 列出分组 |
+
+**REST API 端点：** `http://localhost:3000`
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/api/health` | GET | 健康检查 |
+| `/api/notes` | GET/POST | 笔记列表/创建 |
+| `/api/notes/:id` | GET/PUT/DELETE | 笔记详情/更新/删除 |
+| `/api/todos` | GET/POST | 待办列表/创建 |
+| `/api/todos/groups` | GET | 分组列表 |
+| `/api/todos/:id` | PATCH/DELETE | 待办更新/删除 |
+
+详见 [`server/README.md`](../../server/README.md)。
+
 ## 可用工具 (MCP)
 
 ### 📊 股票分析与行情
