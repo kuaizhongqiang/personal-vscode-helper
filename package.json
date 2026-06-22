@@ -1,0 +1,126 @@
+  {
+  "name": "personal-vscode-helper",
+  "displayName": "Personal VSCode Helper",
+  "description": "我的第一个 VSCode 插件练习",
+  "publisher": "kuaizhongqiang",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vcs-manager",
+          "title": "版本管理",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "vcs-manager": [
+        {
+          "id": "plasticView",
+          "name": "Plastic SCM"
+        },
+        {
+          "id": "svnView",
+          "name": "SVN"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "personal-vscode-helper.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "vcs-manager.plastic.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vcs-manager.plastic.commit",
+        "title": "提交",
+        "icon": "$(check)"
+      },
+      {
+        "command": "vcs-manager.plastic.update",
+        "title": "更新",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "vcs-manager.svn.refresh",
+        "title": "刷新",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vcs-manager.svn.commit",
+        "title": "提交",
+        "icon": "$(check)"
+      },
+      {
+        "command": "vcs-manager.svn.update",
+        "title": "更新",
+        "icon": "$(cloud-download)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vcs-manager.plastic.refresh",
+          "when": "view == plasticView",
+          "group": "navigation"
+        },
+        {
+          "command": "vcs-manager.plastic.commit",
+          "when": "view == plasticView",
+          "group": "navigation"
+        },
+        {
+          "command": "vcs-manager.plastic.update",
+          "when": "view == plasticView",
+          "group": "navigation"
+        },
+        {
+          "command": "vcs-manager.svn.refresh",
+          "when": "view == svnView",
+          "group": "navigation"
+        },
+        {
+          "command": "vcs-manager.svn.commit",
+          "when": "view == svnView",
+          "group": "navigation"
+        },
+        {
+          "command": "vcs-manager.svn.update",
+          "when": "view == svnView",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package -o extension.vsix",
+    "install-local": "npm run compile && npm run package && code --install-extension extension.vsix --force",
+    "release:patch": "npm version patch --no-git-tag-version && npm run compile",
+    "release:minor": "npm version minor --no-git-tag-version && npm run compile"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "20.x",
+    "typescript": "^5.4.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0"
+  }
+}

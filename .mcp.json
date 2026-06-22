@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "agent-memory": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\kuaizhongqiang\\AppData\\Roaming\\npm\\node_modules\\tencent-agent-memory-mcp-bridge\\dist\\index.js"
+      ],
+      "env": {
+        "BRIDGE_URL": "https://memory.kuai-private.top/api/v1",
+        "API_KEY": "cbk-148109bf7ebd",
+        "SENDER": "claude-code"
+      }
+    }
+  }
+}
