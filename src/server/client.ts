@@ -46,7 +46,8 @@ export class ApiClient {
   /** 健康检查 */
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await this.fetch('/api/health', { method: 'GET' }, 5000);
+      const url = this.buildUrl('/api/health');
+      const res = await this.fetch(url, { method: 'GET' }, 5000);
       return res.ok;
     } catch {
       return false;
