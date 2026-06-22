@@ -3,3 +3,10 @@ src/**
 tsconfig.json
 .gitignore
 node_modules
+server/**
+services/**
+docs/**
+.github/**
+.env.example
+CLAUDE.md
+.mcp.json
