@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ConfigPanel } from './panels/configPanel';
-import { NotepadPanel } from './panels/notePadPanel';
+import { NotepadPanel } from './panels/notepadPanel';
 import { TodoPanel } from './panels/todoPanel';
 import { StockDetailPanel } from './views/stockDetailPanel';
 import { PoolStock } from './views/stockTree';
