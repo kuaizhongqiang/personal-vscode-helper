@@ -47,7 +47,7 @@ jobs:
           name: vsix
           path: "personal-vscode-helper.vsix"
 
-  publish:
+  release:
     needs: package
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -58,7 +58,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run compile
-      - run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
+      - run: npx vsce package -o personal-vscode-helper.vsix
       - uses: softprops/action-gh-release@v2
         with:
           files: "*.vsix"
