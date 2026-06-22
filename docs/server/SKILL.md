@@ -13,7 +13,7 @@ description: "分析股票和市场。通过 dsa MCP 工具调用股票分析、
 
 | 服务 | 用途 | 代码位置 |
 |------|------|---------|
-| **personal-helper-server** | 记事本 + Todo REST API + CLI | [`server/`](../../server/) |
+| **personal-helper-server** | 记事本 + Todo REST API + CLI | [`services/personal-helper-server/`](../../services/personal-helper-server/) |
 | **stock-analyzer** | 股票行情 + 分析数据 | 独立部署（已有） |
 
 ### personal-helper-server
@@ -48,7 +48,7 @@ description: "分析股票和市场。通过 dsa MCP 工具调用股票分析、
 | `/api/todos/groups` | GET | 分组列表 |
 | `/api/todos/:id` | PATCH/DELETE | 待办更新/删除 |
 
-详见 [`server/README.md`](../../server/README.md)。
+详见 [`services/personal-helper-server/README.md`](../../services/personal-helper-server/README.md)。
 
 ## 可用工具 (MCP)
 

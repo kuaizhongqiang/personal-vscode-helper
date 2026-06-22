@@ -27,9 +27,9 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-        working-directory: server
+        working-directory: services/personal-helper-server
       - run: npx tsc --noEmit
-        working-directory: server
+        working-directory: services/personal-helper-server
 
   package:
     needs: build
@@ -74,8 +74,8 @@ jobs:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-        working-directory: server
+        working-directory: services/personal-helper-server
       - run: npm publish
-        working-directory: server
+        working-directory: services/personal-helper-server
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
