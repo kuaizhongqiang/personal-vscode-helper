@@ -12,28 +12,6 @@ const DSA_API_URL: string = (() => {
   return 'http://localhost:8000/api/v1';
 })();
 
-/* ─── Simple memory cache ─── */
-
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
-
-const cache = new Map<string, CacheEntry<any>>();
-const CACHE_TTL_OVERVIEW = 60_000; // 60s
-const CACHE_TTL_BATCH = 30_000;    // 30s
-
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data;
-  cache.delete(key);
-  return null;
-}
-
-function setCache<T>(key: string, data: T, ttl: number): void {
-  cache.set(key, { data, expiresAt: Date.now() + ttl });
-}
-
 /* ─── Helpers ─── */
 
 async function dsaFetch<T = any>(path: string): Promise<T> {
@@ -70,23 +48,16 @@ interface StockPool {
 /* ─── Routes ─── */
 
 /**
- * GET /overview — 组合 dsa-server 数据生成股池总览
+ * GET /overview — 股池总览（含股票列表 + 分析结果）
  *
- * dsa-server 实际路由:
- *   GET /pools              → 池列表
- *   GET /pools/{id}/stocks  → 池内股票
- *   GET /stocks/{code}/quote → 个股行情
+ * 数据来源:
+ *   dsa-server /pools              → 股池列表
+ *   dsa-server /pools/{id}/stocks  → 股票列表（含分析字段）
  *
- * 逐个组合，60s 内存缓存
+ * 实时价格由后续步骤接入（腾讯接口），当前返回 null
  */
 router.get('/overview', async (_req: Request, res: Response) => {
   try {
-    const cached = getCached<StockPool[]>('overview');
-    if (cached) {
-      res.json(cached);
-      return;
-    }
-
     const poolData = await dsaFetch<{ pools: any[] }>('/pools');
     const pools: any[] = poolData.pools || [];
 
@@ -96,38 +67,18 @@ router.get('/overview', async (_req: Request, res: Response) => {
           const stockListData = await dsaFetch<{ stocks: any[] }>(`/pools/${pool.id}/stocks`);
           const rawStocks: any[] = stockListData.stocks || [];
 
-          const stocks: PoolStock[] = await Promise.all(
-            rawStocks.map(async (s: any) => {
-              try {
-                const quote = await dsaFetch<any>(`/stocks/${s.stock_code}/quote`);
-                return {
-                  code: s.stock_code,
-                  name: s.stock_name || quote.stock_name || '',
-                  current_price: quote.current_price ?? null,
-                  change_pct: quote.change_percent ?? null,
-                  quote_time: quote.update_time ?? null,
-                  analysis_summary: s.analysis_summary ?? null,
-                  action_label: s.action_label ?? null,
-                  ideal_buy: s.ideal_buy ?? null,
-                  stop_loss: s.stop_loss ?? null,
-                  take_profit: s.take_profit ?? null,
-                };
-              } catch {
-                return {
-                  code: s.stock_code,
-                  name: s.stock_name || '',
-                  current_price: null,
-                  change_pct: null,
-                  quote_time: null,
-                  analysis_summary: null,
-                  action_label: null,
-                  ideal_buy: null,
-                  stop_loss: null,
-                  take_profit: null,
-                };
-              }
-            }),
-          );
+          const stocks: PoolStock[] = rawStocks.map((s: any) => ({
+            code: s.stock_code,
+            name: s.stock_name || '',
+            current_price: null,
+            change_pct: null,
+            quote_time: null,
+            analysis_summary: s.analysis_summary ?? null,
+            action_label: s.action_label ?? null,
+            ideal_buy: s.ideal_buy ?? null,
+            stop_loss: s.stop_loss ?? null,
+            take_profit: s.take_profit ?? null,
+          }));
 
           return {
             name: pool.name || '',
@@ -141,64 +92,9 @@ router.get('/overview', async (_req: Request, res: Response) => {
       }),
     );
 
-    setCache('overview', results, CACHE_TTL_OVERVIEW);
     res.json(results);
   } catch (err: any) {
     console.error('[stocks/overview] Failed:', err.message);
-    res.status(502).json({ error: '代理上游失败', detail: err.message });
-  }
-});
-
-/**
- * GET /batch?codes=600519,300750,... — 批量行情
- *
- * dsa-server 无独立批量接口，逐个调用 /stocks/{code}/quote 聚合
- * 30s 内存缓存（基于排序后的 code 列表）
- */
-router.get('/batch', async (req: Request, res: Response) => {
-  try {
-    const codesParam = req.query.codes as string;
-    if (!codesParam) {
-      res.status(400).json({ error: '缺少查询参数 codes' });
-      return;
-    }
-
-    const codes = codesParam.split(',').map(c => c.trim()).filter(Boolean);
-    if (codes.length === 0) {
-      res.status(400).json({ error: 'codes 参数为空' });
-      return;
-    }
-
-    // Use sorted deduplicated codes as cache key
-    const cacheKey = `batch:${[...new Set(codes)].sort().join(',')}`;
-    const cached = getCached<any[]>(cacheKey);
-    if (cached) {
-      res.json(cached);
-      return;
-    }
-
-    const quotes = await Promise.all(
-      codes.map(async (code) => {
-        try {
-          const quote = await dsaFetch<any>(`/stocks/${code}/quote`);
-          return {
-            code: quote.stock_code,
-            name: quote.stock_name,
-            current_price: quote.current_price,
-            change_pct: quote.change_percent,
-            quote_time: quote.update_time,
-          };
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    const result = quotes.filter(Boolean);
-    setCache(cacheKey, result, CACHE_TTL_BATCH);
-    res.json(result);
-  } catch (err: any) {
-    console.error('[stocks/batch] Failed:', err.message);
     res.status(502).json({ error: '代理上游失败', detail: err.message });
   }
 });
