@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getHelperClient, getStockClient } from '../server/endpoints';
+import { getHelperClient } from '../server/endpoints';
 import { StockDataProvider, StockOverviewResponse } from './stockTree';
 
 /**
@@ -77,9 +77,9 @@ export class StockPoller {
   private async fetchBatchQuotes(): Promise<void> {
     if (this.cachedCodes.length === 0) return;
     try {
-      const client = getStockClient();
+      const client = getHelperClient();
       const codes = this.cachedCodes.join(',');
-      const quotes = await client.get<any[]>(`/api/v1/stocks/batch?codes=${codes}`);
+      const quotes = await client.get<any[]>(`/api/stocks/batch?codes=${codes}`);
       if (!quotes || quotes.length === 0) return;
 
       // We can't directly modify provider data; just trigger a full refresh

@@ -2,33 +2,43 @@ import { Router, Request, Response } from 'express';
 
 const router = Router();
 
-const DSA_SERVER_URL = process.env.DSA_SERVER_URL || 'http://localhost:8000';
+/* ─── Config ─── */
 
-/* ─── Types ─── */
+// DSA_API_URL 优先（包含 /api/v1 前缀），兼容旧的 DSA_SERVER_URL
+const RAW_DSA_API = process.env.DSA_API_URL;
+const RAW_DSA_SERVER = process.env.DSA_SERVER_URL;
+const DSA_API_URL: string = (() => {
+  if (RAW_DSA_API) return RAW_DSA_API.replace(/\/+$/, '');
+  if (RAW_DSA_SERVER) return `${RAW_DSA_SERVER.replace(/\/+$/, '')}/api/v1`;
+  return 'http://localhost:8000/api/v1';
+})();
 
-interface PoolStock {
-  code: string;
-  name: string;
-  current_price: number | null;
-  change_pct: number | null;
-  analysis_summary: string | null;
-  action_label: string | null;
-  ideal_buy: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
+/* ─── Simple memory cache ─── */
+
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
 }
 
-interface StockPool {
-  name: string;
-  description: string;
-  updated_at: string;
-  stocks: PoolStock[];
+const cache = new Map<string, CacheEntry<any>>();
+const CACHE_TTL_MS = 60_000; // 60s
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (entry && Date.now() < entry.expiresAt) return entry.data;
+  cache.delete(key);
+  return null;
+}
+
+function setCache<T>(key: string, data: T): void {
+  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
 /* ─── Helpers ─── */
 
 async function dsaFetch(path: string): Promise<any> {
-  const res = await fetch(`${DSA_SERVER_URL}/api/v1${path}`);
+  const url = `${DSA_API_URL}${path.startsWith('/') ? path : '/' + path}`;
+  const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`dsa-server error: ${res.status} ${res.statusText}`);
   }
@@ -38,71 +48,44 @@ async function dsaFetch(path: string): Promise<any> {
 /* ─── Routes ─── */
 
 /**
- * GET /overview — 代理 dsa-server 的股池+行情数据，组装成扩展所需的格式
+ * GET /overview — 透传 dsa-server 的股池总览（含行情+分析+策略价位）
  *
- * 内部流程:
- *   1. GET /pools → 股池列表
- *   2. 对每个股池 GET /pools/{pool_id}/stocks → 股票列表
- *   3. 对每支股票 GET /stocks/{code}/quote → 行情
+ * 内部调用: GET {DSA_API_URL}/pools/overview
+ * 60s 内存缓存，减少穿透
  */
 router.get('/overview', async (_req: Request, res: Response) => {
   try {
-    const poolData = await dsaFetch('/pools');
-    const pools: any[] = poolData.pools || [];
+    const cached = getCached('overview');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
 
-    const results: StockPool[] = await Promise.all(
-      pools.map(async (pool: any) => {
-        try {
-          const stockListData = await dsaFetch(`/pools/${pool.id}/stocks`);
-          const rawStocks: any[] = stockListData.stocks || [];
-
-          const stocks: PoolStock[] = await Promise.all(
-            rawStocks.map(async (s: any) => {
-              try {
-                const quote = await dsaFetch(`/stocks/${s.stock_code}/quote`);
-                return {
-                  code: s.stock_code,
-                  name: s.stock_name || quote.stock_name || '',
-                  current_price: quote.current_price ?? null,
-                  change_pct: quote.change_percent ?? null,
-                  analysis_summary: s.analysis_summary ?? null,
-                  action_label: s.action_label ?? null,
-                  ideal_buy: s.ideal_buy ?? null,
-                  stop_loss: s.stop_loss ?? null,
-                  take_profit: s.take_profit ?? null,
-                };
-              } catch {
-                // 单支股票失败不影响其他
-                return {
-                  code: s.stock_code,
-                  name: s.stock_name || '',
-                  current_price: null,
-                  change_pct: null,
-                  analysis_summary: null,
-                  action_label: null,
-                  ideal_buy: null,
-                  stop_loss: null,
-                  take_profit: null,
-                };
-              }
-            }),
-          );
-
-          return {
-            name: pool.name || '',
-            description: pool.description || '',
-            updated_at: pool.updated_at || '',
-            stocks,
-          };
-        } catch {
-          return { name: pool.name || '', description: '', updated_at: '', stocks: [] };
-        }
-      }),
-    );
-
-    res.json(results);
+    const data = await dsaFetch('/pools/overview');
+    setCache('overview', data);
+    res.json(data);
   } catch (err: any) {
     console.error('[stocks/overview] Failed:', err.message);
+    res.status(502).json({ error: '代理上游失败', detail: err.message });
+  }
+});
+
+/**
+ * GET /batch?codes=600519,300750,... — 透传 dsa-server 的批量行情接口
+ *
+ * 内部调用: GET {DSA_API_URL}/stocks/batch?codes=...
+ */
+router.get('/batch', async (req: Request, res: Response) => {
+  try {
+    const codes = req.query.codes as string;
+    if (!codes) {
+      res.status(400).json({ error: '缺少查询参数 codes' });
+      return;
+    }
+    const data = await dsaFetch(`/stocks/batch?codes=${encodeURIComponent(codes)}`);
+    res.json(data);
+  } catch (err: any) {
+    console.error('[stocks/batch] Failed:', err.message);
     res.status(502).json({ error: '代理上游失败', detail: err.message });
   }
 });
