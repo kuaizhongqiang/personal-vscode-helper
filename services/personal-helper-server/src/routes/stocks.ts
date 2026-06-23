@@ -134,11 +134,13 @@ interface StockPool {
 /* ─── Routes ─── */
 
 /**
- * GET /overview — 股池总览（结构 + 分析结果 + 实时价格）
+ * GET /overview — 股池总览
  *
- * 优先调用 dsa-server /pools/overview 获取结构和分析数据，
- * 再用腾讯财经实时价格覆盖（仅交易时段）。
- * 若 /pools/overview 超时，降级为 /pools + /pools/{id}/stocks。
+ * 数据来源（均为纯 DB 查询，毫秒级）:
+ *   1. dsa-server /pools              → 股池列表
+ *   2. dsa-server /pools/{id}/stocks  → 股票列表
+ *   3. dsa-server /api/v1/history     → 分析结果（按股票代码去重取最新）
+ *   4. 腾讯财经 qt.gtimg.cn           → 实时价格（仅交易时段）
  *
  * 缓存: 60s
  */
@@ -150,108 +152,85 @@ router.get('/overview', async (_req: Request, res: Response) => {
       return;
     }
 
-    // 尝试从 dsa-server /pools/overview 获取完整数据
-    let pools: any[] = [];
-    let poolStocksMap = new Map<string | number, any[]>();
-    let overviewSucceeded = false;
+    // Step 1: 获取股池列表
+    const poolData = await dsaFetch<{ pools: any[] }>('/pools');
+    const pools: any[] = poolData.pools || [];
 
-    try {
-      const overviewData = await dsaFetch<any[]>('/pools/overview', 15000);
-      if (Array.isArray(overviewData) && overviewData.length > 0) {
-        pools = overviewData;
-        overviewSucceeded = true;
-      }
-    } catch {
-      console.log('[stocks/overview] /pools/overview 超时，降级到组合模式');
-    }
+    // Step 2: 获取每个池的股票列表，收集所有股票代码
+    const allCodes: string[] = [];
+    const poolStocksMap = new Map<string | number, any[]>();
 
-    if (!overviewSucceeded) {
-      // 降级模式: /pools + /pools/{id}/stocks（无分析字段）
-      const poolListData = await dsaFetch<{ pools: any[] }>('/pools');
-      pools = (poolListData.pools || []).map((p: any) => ({
-        name: p.name || '',
-        description: p.description || '',
-        updated_at: p.updated_at || '',
-        id: p.id,
-        stocks: [] as any[],
-      }));
-
-      for (const pool of pools) {
-        try {
-          const stockListData = await dsaFetch<{ stocks: any[] }>(`/pools/${pool.id}/stocks`);
-          const rawStocks = stockListData.stocks || [];
-          poolStocksMap.set(pool.id, rawStocks);
-          pool.stocks = rawStocks.map((s: any) => ({
-            code: s.code,
-            name: s.name || '',
-            current_price: null,
-            change_pct: null,
-            quote_time: null,
-            analysis_summary: null,
-            action_label: null,
-            ideal_buy: null,
-            stop_loss: null,
-            take_profit: null,
-          }));
-        } catch {
-          pool.stocks = [];
-        }
-      }
-
-      // 收集股票代码用于腾讯价格
-      const allCodes: string[] = [];
-      for (const pool of pools) {
-        for (const s of pool.stocks) {
+    for (const pool of pools) {
+      try {
+        const stockListData = await dsaFetch<{ stocks: any[] }>(`/pools/${pool.id}/stocks`);
+        const rawStocks: any[] = stockListData.stocks || [];
+        poolStocksMap.set(pool.id, rawStocks);
+        for (const s of rawStocks) {
           if (s.code) allCodes.push(s.code);
         }
+      } catch {
+        poolStocksMap.set(pool.id, []);
       }
+    }
 
-      if (isMarketOpen() && allCodes.length > 0) {
-        const priceMap = await fetchTencentPrices([...new Set(allCodes)]);
-        for (const pool of pools) {
-          for (const s of pool.stocks) {
-            const p = priceMap.get(s.code);
-            if (p) {
-              s.current_price = p.price;
-              s.change_pct = p.changePct;
-              s.quote_time = p.time;
-            }
+    // Step 3: 获取分析结果（从 /api/v1/history 批量拉取，按 code 去重取最新）
+    const analysisMap = new Map<string, any>();
+    if (allCodes.length > 0) {
+      try {
+        // 历史列表接口: GET /api/v1/history?limit=200
+        // 返回所有分析记录（纯 DB），在内存中按 stock_code 去重
+        const historyData = await dsaFetch<{ records: any[]; total: number }>('/history?limit=200');
+        const records = historyData?.records || [];
+        for (const r of records) {
+          const code = r.stock_code || r.code;
+          if (!code) continue;
+          // 只保留每个股票的最新一条
+          const existing = analysisMap.get(code);
+          if (!existing || (r.created_at && r.created_at > existing.created_at)) {
+            analysisMap.set(code, r);
           }
         }
-      }
-
-      setCache('overview', pools);
-      res.json(pools);
-      return;
-    }
-
-    // 正常模式: /pools/overview 返回的已经是 PoolOverviewPoolItem[] 格式
-    // 提取股票代码 → 腾讯实时价格 → 覆盖
-    const allCodes: string[] = [];
-    for (const pool of pools) {
-      const stocks: any[] = pool.stocks || [];
-      for (const s of stocks) {
-        if (s.code) allCodes.push(s.code);
+      } catch (err) {
+        console.log('[stocks/overview] /history 获取失败:', (err as Error).message);
       }
     }
 
+    // Step 4: 交易时段内获取腾讯实时价格
+    let priceMap = new Map<string, TencentQuote>();
     if (isMarketOpen() && allCodes.length > 0) {
-      const priceMap = await fetchTencentPrices([...new Set(allCodes)]);
-      for (const pool of pools) {
-        const stocks: any[] = pool.stocks || [];
-        for (const s of stocks) {
-          const p = priceMap.get(s.code);
-          if (p) {
-            s.current_price = p.price;
-            s.change_pct = p.changePct;
-            s.quote_time = p.time;
-          }
-        }
-      }
+      priceMap = await fetchTencentPrices([...new Set(allCodes)]);
     }
 
-    setCache('overview', pools);
-    res.json(pools);
+    // Step 5: 组装结果
+    const results: StockPool[] = pools.map((pool: any) => {
+      const rawStocks = poolStocksMap.get(pool.id) || [];
+      const stocks: PoolStock[] = rawStocks.map((s: any) => {
+        const price = priceMap.get(s.code);
+        const analysis = analysisMap.get(s.code);
+        return {
+          code: s.code,
+          name: s.name || '',
+          current_price: price?.price ?? null,
+          change_pct: price?.changePct ?? null,
+          quote_time: price?.time ?? null,
+          analysis_summary: analysis?.analysis_summary ?? null,
+          action_label: analysis?.action_label ?? null,
+          ideal_buy: null,  // 历史列表不含策略价位，需单独调详情接口
+          stop_loss: null,
+          take_profit: null,
+        };
+      });
+
+      return {
+        name: pool.name || '',
+        description: pool.description || '',
+        updated_at: pool.updated_at || '',
+        stocks,
+      };
+    });
+
+    setCache('overview', results);
+    res.json(results);
   } catch (err: any) {
     console.error('[stocks/overview] Failed:', err.message);
     res.status(502).json({ error: '代理上游失败', detail: err.message });
