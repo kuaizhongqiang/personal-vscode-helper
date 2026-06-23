@@ -75,16 +75,17 @@ export class NotepadPanel {
       case 'getNote':
         this._postNote(store.get(msg.id));
         break;
-      case 'createNote':
+      case 'createNote': {
         const created = store.create(msg.title, msg.content);
         this._panel.webview.postMessage({ type: 'noteCreated', data: created });
         this._postNotesList();
         break;
+      }
       case 'updateNote':
         store.update(msg.id, msg.title, msg.content);
         this._postNotesList();
         break;
-      case 'deleteNote':
+      case 'deleteNote': {
         const confirm = await vscode.window.showWarningMessage('确定删除这条笔记吗？', { modal: true }, '删除');
         if (confirm) {
           try {
@@ -95,6 +96,7 @@ export class NotepadPanel {
           this._postNotesList();
         }
         break;
+      }
       case 'searchNotes':
         this._postNotesList(msg.keyword);
         break;
