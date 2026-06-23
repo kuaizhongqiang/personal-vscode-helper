@@ -3,7 +3,7 @@
   "displayName": "Personal VSCode Helper",
   "description": "我的第一个 VSCode 插件练习",
   "publisher": "kuaizhongqiang",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "engines": {
     "vscode": "^1.85.0"
   },

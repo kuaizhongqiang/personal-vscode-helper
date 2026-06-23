@@ -41,12 +41,11 @@ async function dsaFetch<T = any>(path: string): Promise<T> {
 
 /**
  * A股交易时段: 周一至周五 9:30-11:30, 13:00-15:00
- * 非交易时段返回 false，跳过实时行情API调用
+ * 非交易时段跳过实时行情API调用，返回缓存数据
  */
 function isMarketOpen(): boolean {
   const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false; // 周末
+  if (now.getDay() === 0 || now.getDay() === 6) return false;
 
   const total = now.getHours() * 60 + now.getMinutes();
   return (total >= 570 && total < 690) || (total >= 780 && total < 900);
@@ -60,7 +59,6 @@ interface TencentQuote {
   time: string; // YYYYMMDDHHMMSS
 }
 
-/** 将 A 股代码转为腾讯接口前缀 */
 function toTencentCode(code: string): string {
   if (code.startsWith('6')) return `sh${code}`;
   if (code.startsWith('0') || code.startsWith('3')) return `sz${code}`;
@@ -94,7 +92,6 @@ async function fetchTencentPrices(codes: string[]): Promise<Map<string, TencentQ
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      // 提取引号内的字段列表
       const match = trimmed.match(/"(.+)"/);
       if (!match) continue;
 
@@ -150,8 +147,11 @@ interface StockPool {
  *
  * 数据来源:
  *   1. dsa-server /pools              → 股池列表
- *   2. dsa-server /pools/{id}/stocks  → 股票列表 + 分析结果
+ *   2. dsa-server /pools/{id}/stocks  → 股票列表（字段: code/name）
  *   3. 腾讯财经 qt.gtimg.cn           → 实时价格（仅交易时段）
+ *
+ * 注意: /pools/{id}/stocks 不包含分析结果字段（analysis_summary等），
+ *       分析数据需后续通过 dsa-server 的 /overview 或分析接口获取。
  *
  * 缓存: 60s
  */
@@ -167,9 +167,9 @@ router.get('/overview', async (_req: Request, res: Response) => {
     const poolData = await dsaFetch<{ pools: any[] }>('/pools');
     const pools: any[] = poolData.pools || [];
 
-    // Step 2: 获取每个池的股票列表 + 分析结果，同时收集所有代码
+    // Step 2: 获取每个池的股票列表，收集所有股票代码
     const allCodes: string[] = [];
-    const poolStocksMap = new Map<string, any[]>();
+    const poolStocksMap = new Map<string | number, any[]>();
 
     for (const pool of pools) {
       try {
@@ -177,7 +177,8 @@ router.get('/overview', async (_req: Request, res: Response) => {
         const rawStocks: any[] = stockListData.stocks || [];
         poolStocksMap.set(pool.id, rawStocks);
         for (const s of rawStocks) {
-          allCodes.push(s.stock_code);
+          // /pools/{id}/stocks 返回字段为 code / name（非 stock_code / stock_name）
+          if (s.code) allCodes.push(s.code);
         }
       } catch {
         poolStocksMap.set(pool.id, []);
@@ -194,18 +195,19 @@ router.get('/overview', async (_req: Request, res: Response) => {
     const results: StockPool[] = pools.map((pool: any) => {
       const rawStocks = poolStocksMap.get(pool.id) || [];
       const stocks: PoolStock[] = rawStocks.map((s: any) => {
-        const price = priceMap.get(s.stock_code);
+        const price = priceMap.get(s.code);
         return {
-          code: s.stock_code,
-          name: s.stock_name || '',
+          code: s.code,
+          name: s.name || '',
           current_price: price?.price ?? null,
           change_pct: price?.changePct ?? null,
           quote_time: price?.time ?? null,
-          analysis_summary: s.analysis_summary ?? null,
-          action_label: s.action_label ?? null,
-          ideal_buy: s.ideal_buy ?? null,
-          stop_loss: s.stop_loss ?? null,
-          take_profit: s.take_profit ?? null,
+          // 分析字段暂不可用（/pools/{id}/stocks 不返回这些）
+          analysis_summary: null,
+          action_label: null,
+          ideal_buy: null,
+          stop_loss: null,
+          take_profit: null,
         };
       });
 
