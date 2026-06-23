@@ -3,7 +3,7 @@
   "displayName": "Personal VSCode Helper",
   "description": "我的第一个 VSCode 插件练习",
   "publisher": "kuaizhongqiang",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -42,8 +42,8 @@
         },
         "personal-vscode-helper.stockRefreshInterval": {
           "type": "number",
-          "default": 300,
-          "description": "股票行情刷新间隔（秒）"
+          "default": 60,
+          "description": "股票行情刷新间隔（秒，默认60秒）"
         },
         "personal-vscode-helper.externalToolCommand": {
           "type": "string",

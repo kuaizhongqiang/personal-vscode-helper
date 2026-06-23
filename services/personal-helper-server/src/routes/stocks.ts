@@ -12,15 +12,113 @@ const DSA_API_URL: string = (() => {
   return 'http://localhost:8000/api/v1';
 })();
 
+/* ─── Cache ─── */
+
+const cache = new Map<string, { data: any; expiresAt: number }>();
+const CACHE_TTL_MS = 60_000; // 60s for full overview
+
+function getCache<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (entry && Date.now() < entry.expiresAt) return entry.data;
+  cache.delete(key);
+  return null;
+}
+
+function setCache(key: string, data: any): void {
+  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
 /* ─── Helpers ─── */
 
 async function dsaFetch<T = any>(path: string): Promise<T> {
   const url = `${DSA_API_URL}${path.startsWith('/') ? path : '/' + path}`;
   const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`dsa-server error: ${res.status} ${res.statusText}`);
-  }
+  if (!res.ok) throw new Error(`dsa-server error: ${res.status} ${res.statusText}`);
   return res.json();
+}
+
+/* ─── Market Hours ─── */
+
+/**
+ * A股交易时段: 周一至周五 9:30-11:30, 13:00-15:00
+ * 非交易时段返回 false，跳过实时行情API调用
+ */
+function isMarketOpen(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false; // 周末
+
+  const total = now.getHours() * 60 + now.getMinutes();
+  return (total >= 570 && total < 690) || (total >= 780 && total < 900);
+}
+
+/* ─── Tencent Real-time Price ─── */
+
+interface TencentQuote {
+  price: number;
+  changePct: number;
+  time: string; // YYYYMMDDHHMMSS
+}
+
+/** 将 A 股代码转为腾讯接口前缀 */
+function toTencentCode(code: string): string {
+  if (code.startsWith('6')) return `sh${code}`;
+  if (code.startsWith('0') || code.startsWith('3')) return `sz${code}`;
+  if (code.startsWith('4') || code.startsWith('8')) return `bj${code}`;
+  return code;
+}
+
+/**
+ * 从腾讯财经批量获取实时价格
+ * 接口: http://qt.gtimg.cn/q=sh600519,sz000001,...
+ * 返回: v_sh600519="...~...~..."; （波浪号分隔，GBK编码）
+ */
+async function fetchTencentPrices(codes: string[]): Promise<Map<string, TencentQuote>> {
+  if (codes.length === 0) return new Map();
+
+  const tencentCodes = codes.map(toTencentCode);
+  const url = `http://qt.gtimg.cn/q=${tencentCodes.join(',')}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    const buf = await res.arrayBuffer();
+    const decoder = new TextDecoder('gbk');
+    const text = decoder.decode(buf);
+
+    const result = new Map<string, TencentQuote>();
+
+    for (const line of text.trim().split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // 提取引号内的字段列表
+      const match = trimmed.match(/"(.+)"/);
+      if (!match) continue;
+
+      const fields = match[1].split('~');
+      if (fields.length < 50) continue;
+
+      const rawCode = fields[2].trim();
+      const price = parseFloat(fields[3]);
+      const changePct = parseFloat(fields[32]);
+      const time = fields[30];
+
+      if (!isNaN(price)) {
+        result.set(rawCode, {
+          price,
+          changePct: isNaN(changePct) ? 0 : changePct,
+          time,
+        });
+      }
+    }
+
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /* ─── Types ─── */
@@ -48,50 +146,78 @@ interface StockPool {
 /* ─── Routes ─── */
 
 /**
- * GET /overview — 股池总览（含股票列表 + 分析结果）
+ * GET /overview — 股池总览
  *
  * 数据来源:
- *   dsa-server /pools              → 股池列表
- *   dsa-server /pools/{id}/stocks  → 股票列表（含分析字段）
+ *   1. dsa-server /pools              → 股池列表
+ *   2. dsa-server /pools/{id}/stocks  → 股票列表 + 分析结果
+ *   3. 腾讯财经 qt.gtimg.cn           → 实时价格（仅交易时段）
  *
- * 实时价格由后续步骤接入（腾讯接口），当前返回 null
+ * 缓存: 60s
  */
 router.get('/overview', async (_req: Request, res: Response) => {
   try {
+    const cached = getCache<StockPool[]>('overview');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
+    // Step 1: 获取股池列表
     const poolData = await dsaFetch<{ pools: any[] }>('/pools');
     const pools: any[] = poolData.pools || [];
 
-    const results: StockPool[] = await Promise.all(
-      pools.map(async (pool: any) => {
-        try {
-          const stockListData = await dsaFetch<{ stocks: any[] }>(`/pools/${pool.id}/stocks`);
-          const rawStocks: any[] = stockListData.stocks || [];
+    // Step 2: 获取每个池的股票列表 + 分析结果，同时收集所有代码
+    const allCodes: string[] = [];
+    const poolStocksMap = new Map<string, any[]>();
 
-          const stocks: PoolStock[] = rawStocks.map((s: any) => ({
-            code: s.stock_code,
-            name: s.stock_name || '',
-            current_price: null,
-            change_pct: null,
-            quote_time: null,
-            analysis_summary: s.analysis_summary ?? null,
-            action_label: s.action_label ?? null,
-            ideal_buy: s.ideal_buy ?? null,
-            stop_loss: s.stop_loss ?? null,
-            take_profit: s.take_profit ?? null,
-          }));
-
-          return {
-            name: pool.name || '',
-            description: pool.description || '',
-            updated_at: pool.updated_at || '',
-            stocks,
-          };
-        } catch {
-          return { name: pool.name || '', description: '', updated_at: '', stocks: [] };
+    for (const pool of pools) {
+      try {
+        const stockListData = await dsaFetch<{ stocks: any[] }>(`/pools/${pool.id}/stocks`);
+        const rawStocks: any[] = stockListData.stocks || [];
+        poolStocksMap.set(pool.id, rawStocks);
+        for (const s of rawStocks) {
+          allCodes.push(s.stock_code);
         }
-      }),
-    );
+      } catch {
+        poolStocksMap.set(pool.id, []);
+      }
+    }
 
+    // Step 3: 交易时段内获取腾讯实时价格
+    let priceMap = new Map<string, TencentQuote>();
+    if (isMarketOpen() && allCodes.length > 0) {
+      priceMap = await fetchTencentPrices([...new Set(allCodes)]);
+    }
+
+    // Step 4: 组装最终结果
+    const results: StockPool[] = pools.map((pool: any) => {
+      const rawStocks = poolStocksMap.get(pool.id) || [];
+      const stocks: PoolStock[] = rawStocks.map((s: any) => {
+        const price = priceMap.get(s.stock_code);
+        return {
+          code: s.stock_code,
+          name: s.stock_name || '',
+          current_price: price?.price ?? null,
+          change_pct: price?.changePct ?? null,
+          quote_time: price?.time ?? null,
+          analysis_summary: s.analysis_summary ?? null,
+          action_label: s.action_label ?? null,
+          ideal_buy: s.ideal_buy ?? null,
+          stop_loss: s.stop_loss ?? null,
+          take_profit: s.take_profit ?? null,
+        };
+      });
+
+      return {
+        name: pool.name || '',
+        description: pool.description || '',
+        updated_at: pool.updated_at || '',
+        stocks,
+      };
+    });
+
+    setCache('overview', results);
     res.json(results);
   } catch (err: any) {
     console.error('[stocks/overview] Failed:', err.message);
