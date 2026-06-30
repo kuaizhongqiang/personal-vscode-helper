@@ -89,9 +89,9 @@ noteCmd.command('update')
         process.exit(1);
     }
     if (options.title !== undefined)
-        data.notes[idx].title = options.title;
+        data.notes[idx].title = fixEncoding(options.title);
     if (options.content !== undefined)
-        data.notes[idx].content = options.content;
+        data.notes[idx].content = fixEncoding(options.content);
     data.notes[idx].updated_at = new Date().toISOString();
     save(data);
     console.log(`✅ 笔记已更新: ${id}`);
@@ -129,6 +129,8 @@ const todoCmd = program.command('todo').description('管理待办');
 todoCmd.command('create')
     .description('创建待办').argument('<group>', '分组').argument('<content>', '待办内容')
     .action((group, content) => {
+    group = fixEncoding(group);
+    content = fixEncoding(content);
     const data = load();
     if (!data.groups.includes(group))
         data.groups.push(group);
