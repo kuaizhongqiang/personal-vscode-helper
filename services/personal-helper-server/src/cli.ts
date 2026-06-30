@@ -87,8 +87,8 @@ noteCmd.command('update')
     const data = load();
     const idx = data.notes.findIndex(n => n.id === id);
     if (idx === -1) { console.error('❌ 笔记不存在'); process.exit(1); }
-    if (options.title !== undefined) data.notes[idx].title = options.title;
-    if (options.content !== undefined) data.notes[idx].content = options.content;
+    if (options.title !== undefined) data.notes[idx].title = fixEncoding(options.title);
+    if (options.content !== undefined) data.notes[idx].content = fixEncoding(options.content);
     data.notes[idx].updated_at = new Date().toISOString();
     save(data);
     console.log(`✅ 笔记已更新: ${id}`);
@@ -124,6 +124,8 @@ const todoCmd = program.command('todo').description('管理待办');
 todoCmd.command('create')
   .description('创建待办').argument('<group>', '分组').argument('<content>', '待办内容')
   .action((group: string, content: string) => {
+    group = fixEncoding(group);
+    content = fixEncoding(content);
     const data = load();
     if (!data.groups.includes(group)) data.groups.push(group);
     const now = new Date().toISOString();

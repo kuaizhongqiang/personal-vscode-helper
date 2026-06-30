@@ -3,6 +3,7 @@ import healthRouter from './routes/health.js';
 import notesRouter from './routes/notes.js';
 import todosRouter from './routes/todos.js';
 import stocksRouter from './routes/stocks.js';
+import { normalizeEncoding } from './store.js';
 
 /* ─── Auth ─── */
 
@@ -29,7 +30,37 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 
 export function createApp() {
   const app = express();
-  app.use(express.json());
+
+  // Parse JSON body, capture raw bytes for encoding recovery
+  app.use(express.json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf; // Store raw buffer for potential GBK re-parse
+    },
+  }));
+
+  // Post-parsing encoding fix: detect � and try GBK re-parse
+  app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    const rawBuf: Buffer | undefined = (req as any).rawBody;
+    if (rawBuf && rawBuf.length > 0 && req.body) {
+      const str = JSON.stringify(req.body);
+      if (str.includes('�')) {
+        try {
+          const gbkStr = new TextDecoder('gbk').decode(rawBuf);
+          if (!gbkStr.includes('�')) {
+            req.body = JSON.parse(gbkStr);
+          } else {
+            // Partial corruption — try normalizeEncoding on the parsed object
+            req.body = normalizeEncoding(req.body);
+          }
+        } catch {
+          // Fallback: try normalizeEncoding on the UTF-8 parsed object
+          req.body = normalizeEncoding(req.body);
+        }
+      }
+    }
+    next();
+  });
+
   app.use('/api/health', healthRouter);
   app.use('/api/notes', authMiddleware, notesRouter);
   app.use('/api/todos', authMiddleware, todosRouter);
