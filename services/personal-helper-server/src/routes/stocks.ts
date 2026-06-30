@@ -238,4 +238,21 @@ router.get('/overview', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /detail/:code — 个股详情
+ *
+ * 代理 Fi-Pool-Manager 的 /api/v1/stocks/:code/quote 接口，
+ * 供 stockDetailPanel 使用（替代直调 dsa-server）。
+ */
+router.get('/detail/:code', async (req: Request, res: Response) => {
+  try {
+    const { code } = req.params;
+    const data = await fipFetch<any>(`/api/v1/stocks/${code}/quote`);
+    res.json(data);
+  } catch (err: any) {
+    console.error(`[stocks/detail] Failed for ${req.params.code}:`, err.message);
+    res.status(502).json({ error: '获取个股详情失败', detail: err.message });
+  }
+});
+
 export default router;

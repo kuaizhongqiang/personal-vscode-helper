@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { PoolStock } from './stockTree';
-import { getStockClient } from '../server/endpoints';
+import { getHelperClient } from '../server/endpoints';
 
 /**
  * 股票详情 WebView Panel
@@ -18,11 +18,11 @@ export class StockDetailPanel {
   }
 
   static async createOrShow(stock: PoolStock): Promise<void> {
-    // Try to fetch full detail from single stock API
+    // Try to fetch full detail from single stock API (通过 helper-server 代理)
     let detail: any = undefined;
     try {
-      const client = getStockClient();
-      detail = await client.get<any>(`/api/v1/stocks/${stock.code}/quote`);
+      const client = getHelperClient();
+      detail = await client.get<any>(`/api/stocks/detail/${stock.code}`);
     } catch {
       // Detail fetch is optional — use what we have
     }
