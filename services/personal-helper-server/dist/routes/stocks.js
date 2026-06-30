@@ -1,15 +1,7 @@
 import { Router } from 'express';
 const router = Router();
 /* ─── Config ─── */
-const RAW_DSA_API = process.env.DSA_API_URL;
-const RAW_DSA_SERVER = process.env.DSA_SERVER_URL;
-const DSA_API_URL = (() => {
-    if (RAW_DSA_API)
-        return RAW_DSA_API.replace(/\/+$/, '');
-    if (RAW_DSA_SERVER)
-        return `${RAW_DSA_SERVER.replace(/\/+$/, '')}/api/v1`;
-    return 'http://localhost:8000/api/v1';
-})();
+const FI_POOL_MANAGER_URL = (process.env.FI_POOL_MANAGER_URL || 'http://localhost:3721').replace(/\/+$/, '');
 /* ─── Cache ─── */
 const cache = new Map();
 const CACHE_TTL_MS = 60_000; // 60s
@@ -24,14 +16,14 @@ function setCache(key, data) {
     cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 /* ─── Helpers ─── */
-async function dsaFetch(path, timeoutMs = 10000) {
-    const url = `${DSA_API_URL}${path.startsWith('/') ? path : '/' + path}`;
+async function fipFetch(path, timeoutMs = 10000) {
+    const url = `${FI_POOL_MANAGER_URL}${path.startsWith('/') ? path : '/' + path}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok)
-            throw new Error(`dsa-server error: ${res.status} ${res.statusText}`);
+            throw new Error(`Fi-Pool-Manager error: ${res.status} ${res.statusText}`);
         return res.json();
     }
     finally {
@@ -100,11 +92,11 @@ async function fetchTencentPrices(codes) {
 /**
  * GET /overview — 股池总览
  *
- * 数据来源（均为纯 DB 查询，毫秒级）:
- *   1. dsa-server /pools              → 股池列表
- *   2. dsa-server /pools/{id}/stocks  → 股票列表
- *   3. dsa-server /api/v1/history     → 分析结果（按股票代码去重取最新）
- *   4. 腾讯财经 qt.gtimg.cn           → 实时价格（仅交易时段）
+ * 数据来源（Fi-Pool-Manager + 腾讯实时价格）:
+ *   1. Fi-PM /api/v1/pools              → 股池列表
+ *   2. Fi-PM /api/v1/pools/{id}/stocks  → 股票列表
+ *   3. Fi-PM /api/v1/analysis/batch     → 按股票代码获取最新分析
+ *   4. 腾讯财经 qt.gtimg.cn             → 实时价格（仅交易时段）
  *
  * 缓存: 60s
  */
@@ -116,46 +108,39 @@ router.get('/overview', async (_req, res) => {
             return;
         }
         // Step 1: 获取股池列表
-        const poolData = await dsaFetch('/pools');
-        const pools = poolData.pools || [];
+        const poolData = await fipFetch('/api/v1/pools');
+        const pools = poolData.data || [];
         // Step 2: 获取每个池的股票列表，收集所有股票代码
         const allCodes = [];
         const poolStocksMap = new Map();
-        for (const pool of pools) {
+        for (const p of pools) {
             try {
-                const stockListData = await dsaFetch(`/pools/${pool.id}/stocks`);
-                const rawStocks = stockListData.stocks || [];
-                poolStocksMap.set(pool.id, rawStocks);
+                const stockListData = await fipFetch(`/api/v1/pools/${p.id}/stocks`);
+                const rawStocks = stockListData.data || [];
+                poolStocksMap.set(p.id, rawStocks);
                 for (const s of rawStocks) {
                     if (s.code)
                         allCodes.push(s.code);
                 }
             }
             catch {
-                poolStocksMap.set(pool.id, []);
+                poolStocksMap.set(p.id, []);
             }
         }
-        // Step 3: 获取分析结果（从 /api/v1/history 批量拉取，按 code 去重取最新）
+        // Step 3: 批量获取分析结果
         const analysisMap = new Map();
         if (allCodes.length > 0) {
             try {
-                // 历史列表接口: GET /api/v1/history?limit=200
-                // 返回所有分析记录（纯 DB），在内存中按 stock_code 去重
-                const historyData = await dsaFetch('/history?limit=200');
-                const records = historyData?.records || [];
+                const uniqueCodes = [...new Set(allCodes)];
+                const analysisData = await fipFetch(`/api/v1/analysis/batch?codes=${uniqueCodes.join(',')}`);
+                const records = analysisData?.data || [];
                 for (const r of records) {
-                    const code = r.stock_code || r.code;
-                    if (!code)
-                        continue;
-                    // 只保留每个股票的最新一条
-                    const existing = analysisMap.get(code);
-                    if (!existing || (r.created_at && r.created_at > existing.created_at)) {
-                        analysisMap.set(code, r);
-                    }
+                    if (r.code)
+                        analysisMap.set(r.code, r);
                 }
             }
             catch (err) {
-                console.log('[stocks/overview] /history 获取失败:', err.message);
+                console.log('[stocks/overview] /analysis/batch 获取失败:', err.message);
             }
         }
         // Step 4: 交易时段内获取腾讯实时价格
@@ -164,28 +149,39 @@ router.get('/overview', async (_req, res) => {
             priceMap = await fetchTencentPrices([...new Set(allCodes)]);
         }
         // Step 5: 组装结果
-        const results = pools.map((pool) => {
-            const rawStocks = poolStocksMap.get(pool.id) || [];
+        const results = pools.map((p) => {
+            const rawStocks = poolStocksMap.get(p.id) || [];
             const stocks = rawStocks.map((s) => {
                 const price = priceMap.get(s.code);
                 const analysis = analysisMap.get(s.code);
+                // 从 signals JSON 中提取 action_label
+                let actionLabel = null;
+                if (analysis?.signals) {
+                    try {
+                        const signals = typeof analysis.signals === 'string'
+                            ? JSON.parse(analysis.signals)
+                            : analysis.signals;
+                        actionLabel = signals.action || signals.action_label || null;
+                    }
+                    catch { /* ignore */ }
+                }
                 return {
                     code: s.code,
                     name: s.name || '',
                     current_price: price?.price ?? null,
                     change_pct: price?.changePct ?? null,
                     quote_time: price?.time ?? null,
-                    analysis_summary: analysis?.analysis_summary ?? null,
-                    action_label: analysis?.action_label ?? null,
-                    ideal_buy: null, // 历史列表不含策略价位，需单独调详情接口
+                    analysis_summary: analysis?.summary ?? null,
+                    action_label: actionLabel,
+                    ideal_buy: null,
                     stop_loss: null,
                     take_profit: null,
                 };
             });
             return {
-                name: pool.name || '',
-                description: pool.description || '',
-                updated_at: pool.updated_at || '',
+                name: p.name || '',
+                description: p.desc || '',
+                updated_at: p.updatedAt || '',
                 stocks,
             };
         });
