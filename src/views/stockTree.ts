@@ -13,6 +13,7 @@ export interface PoolStock {
   ideal_buy: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  anomaly_score: number | null;   // 1.0-5.0 from Fi-PM finalReport
 }
 
 export interface StockPool {
@@ -20,6 +21,8 @@ export interface StockPool {
   description: string;
   updated_at: string;
   stocks: PoolStock[];
+  pool_signal: number | null;    // -1 bearish, 0 neutral, 1 bullish
+  pool_analysis: string | null;  // pool-level analysis text
 }
 
 export interface StockOverviewResponse extends Array<StockPool> {}
@@ -33,10 +36,33 @@ export class PoolTreeItem extends vscode.TreeItem {
     public readonly pool: StockPool,
   ) {
     super(pool.name, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = `${pool.stocks.length} 只`;
-    this.tooltip = pool.description || pool.name;
+
+    const count = pool.stocks.length;
+    let signalEmoji: string;
+    if (pool.pool_signal === 1) {
+      signalEmoji = '🟢 看多';
+    } else if (pool.pool_signal === -1) {
+      signalEmoji = '🔴 看空';
+    } else {
+      signalEmoji = '⚪ 中性';
+    }
+    this.description = `${signalEmoji}  ${count} 只`;
+
+    let tooltipText = pool.description || pool.name;
+    if (pool.pool_analysis) {
+      tooltipText += '\n' + pool.pool_analysis;
+    }
+    this.tooltip = tooltipText;
+
     this.contextValue = 'stockPool';
-    this.iconPath = new vscode.ThemeIcon('folder');
+
+    if (pool.pool_signal === 1) {
+      this.iconPath = new vscode.ThemeIcon('arrow-up', new vscode.ThemeColor('testing.iconPassed'));
+    } else if (pool.pool_signal === -1) {
+      this.iconPath = new vscode.ThemeIcon('arrow-down', new vscode.ThemeColor('testing.iconFailed'));
+    } else {
+      this.iconPath = new vscode.ThemeIcon('folder');
+    }
   }
 }
 
@@ -72,6 +98,21 @@ export class StockTreeItem extends vscode.TreeItem {
     const profit = stock.take_profit !== null ? stock.take_profit.toFixed(2) : '—';
     this.tooltip = (this.tooltip ? this.tooltip + '\n' : '') +
       `买入:${buy}  止损:${stop}  止盈:${profit}`;
+
+    // Anomaly score (if available)
+    if (stock.anomaly_score !== null && stock.anomaly_score !== undefined) {
+      let anomalyEmoji: string;
+      if (stock.anomaly_score <= 2) {
+        anomalyEmoji = '🟢';
+      } else if (stock.anomaly_score <= 3) {
+        anomalyEmoji = '🔵';
+      } else if (stock.anomaly_score <= 4) {
+        anomalyEmoji = '🟠';
+      } else {
+        anomalyEmoji = '🔴';
+      }
+      this.tooltip += `\n异常评分: ${stock.anomaly_score.toFixed(1)}/5.0  ${anomalyEmoji}`;
+    }
 
     this.contextValue = 'stock';
     this.command = {

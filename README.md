@@ -39,9 +39,19 @@ npm run install-local
 ### 启动后端服务
 
 ```bash
+# 1. 先启动 Fi-Pool-Manager REST API（股票数据源）
+cd /path/to/Fi-Pool-Manager
+npx fi-pool serve        # 默认端口 3721
+
+# 2. 再启动 helper-server（记事本 + Todo + 股票代理）
 cd services/personal-helper-server
 npm install
-npm start        # http://localhost:3000
+
+# 复制环境变量模板
+cp .env.example .env
+# 编辑 .env 配置 API_TOKEN 和 FI_POOL_MANAGER_URL
+
+npm start                # http://localhost:3005
 ```
 
 ## CLI 命令（供 Agent 调用）

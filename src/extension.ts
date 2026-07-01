@@ -13,6 +13,7 @@ import { updateDashboard, initTimer } from './views/statusBarItems';
 import { registerContextMenuCommands } from './views/contextMenu';
 import { initHighlighter } from './views/todoHighlighter';
 import { initCommandCollection } from './views/commandCollection';
+import { FiPMStatusBar } from './views/fipmStatus';
 
 let stockPoller: StockPoller | null = null;
 
@@ -94,6 +95,16 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// 集中注册所有命令（面板 + CLI + 同步）
 	registerCommands(context);
+
+	// Fi-PM 状态栏
+	const fipmStatus = new FiPMStatusBar();
+	fipmStatus.start();
+	context.subscriptions.push({
+		dispose: () => fipmStatus.stop()
+	});
+	vscode.commands.registerCommand('personal-vscode-helper.showFiPMStatus', () => {
+		vscode.window.showInformationMessage('Fi-Pool-Manager 状态', { modal: false });
+	});
 
 	// 股票轮询
 	stockPoller = new StockPoller(stockProvider);

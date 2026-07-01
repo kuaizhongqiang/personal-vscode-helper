@@ -113,6 +113,7 @@ interface PoolStock {
   quote_time: string | null;
   analysis_summary: string | null;
   action_label: string | null;
+  anomaly_score: number | null;
   ideal_buy: number | null;
   stop_loss: number | null;
   take_profit: number | null;
@@ -122,6 +123,8 @@ interface StockPool {
   name: string;
   description: string;
   updated_at: string;
+  pool_signal: number | null;
+  pool_analysis: string | null;
   stocks: PoolStock[];
 }
 
@@ -146,9 +149,9 @@ router.get('/overview', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Step 1: 获取股池列表
-    const poolData = await fipFetch<{ data: any[] }>('/api/v1/pools');
-    const pools: any[] = poolData.data || [];
+    // Step 1: 获取股池列表（含概览统计）
+    const overviewData = await fipFetch<{ data: { pools: any[] } }>('/api/v1/overview');
+    const pools: any[] = overviewData?.data?.pools || [];
 
     // Step 2: 获取每个池的股票列表，收集所有股票代码
     const allCodes: string[] = [];
@@ -216,6 +219,7 @@ router.get('/overview', async (_req: Request, res: Response) => {
           quote_time: price?.time ?? null,
           analysis_summary: analysis?.summary ?? null,
           action_label: actionLabel,
+          anomaly_score: analysis?.anomalyScore ?? null,
           ideal_buy: null,
           stop_loss: null,
           take_profit: null,
@@ -226,6 +230,8 @@ router.get('/overview', async (_req: Request, res: Response) => {
         name: p.name || '',
         description: p.desc || '',
         updated_at: p.updatedAt || '',
+        pool_signal: p.poolSignal ?? null,
+        pool_analysis: p.poolAnalysis ?? null,
         stocks,
       };
     });
@@ -252,6 +258,18 @@ router.get('/detail/:code', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error(`[stocks/detail] Failed for ${req.params.code}:`, err.message);
     res.status(502).json({ error: '获取个股详情失败', detail: err.message });
+  }
+});
+
+/**
+ * GET /status — Fi-Pool-Manager 健康检查
+ */
+router.get('/status', async (_req: Request, res: Response) => {
+  try {
+    const data = await fipFetch<any>('/api/v1/status');
+    res.json(data);
+  } catch (err: any) {
+    res.status(502).json({ error: 'Fi-Pool-Manager 不可达', detail: err.message });
   }
 });
 
