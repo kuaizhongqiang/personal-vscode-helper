@@ -111,6 +111,15 @@ export function activate(context: vscode.ExtensionContext) {
 	stockPoller.start();
 	setStockPoller(stockPoller);
 
+	// 配置变更时重新调度轮询间隔
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('personal-vscode-helper.stockRefreshInterval')) {
+				stockPoller?.reschedule();
+			}
+		}),
+	);
+
 	// 服务端同步
 	const syncManager = new SyncManager();
 	setSyncManager(syncManager);
