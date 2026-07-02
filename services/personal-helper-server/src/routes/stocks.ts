@@ -134,10 +134,16 @@ interface StockPool {
  * GET /overview — 股池总览
  *
  * 数据来源（Fi-Pool-Manager + 腾讯实时价格）:
- *   1. Fi-PM /api/v1/pools              → 股池列表
- *   2. Fi-PM /api/v1/pools/{id}/stocks  → 股票列表
- *   3. Fi-PM /api/v1/analysis/batch     → 按股票代码获取最新分析
- *   4. 腾讯财经 qt.gtimg.cn             → 实时价格（仅交易时段）
+ *   1. Fi-PM /api/v1/pools              → 股池列表（保证完整）
+ *   2. Fi-PM /api/v1/overview           → pool_signal/pool_analysis 等概览字段（合并补充）
+ *   3. Fi-PM /api/v1/pools/{id}/stocks  → 股票列表
+ *   4. Fi-PM /api/v1/analysis/batch     → 按股票代码获取最新分析
+ *   5. 腾讯财经 qt.gtimg.cn             → 实时价格（仅交易时段）
+ *
+ * 注意: 同时调用 /api/v1/pools 和 /api/v1/overview 是因为
+ *   /api/v1/pools 保证返回全部股池（无过滤），
+ *   /api/v1/overview 提供 pool_signal/pool_analysis 等概览级字段。
+ *   两者取并集合并，确保不丢池。
  *
  * 缓存: 60s
  */
@@ -149,9 +155,18 @@ router.get('/overview', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Step 1: 获取股池列表（含概览统计）
-    const overviewData = await fipFetch<{ data: { pools: any[] } }>('/api/v1/overview');
-    const pools: any[] = overviewData?.data?.pools || [];
+    // Step 1: 获取完整股池列表（/api/v1/pools 保证返回全部）+ 概览字段（/api/v1/overview）
+    const [poolsData, overviewData] = await Promise.all([
+      fipFetch<{ data: any[] }>('/api/v1/pools').catch(() => ({ data: [] })),
+      fipFetch<{ data: { pools: any[] } }>('/api/v1/overview').catch(() => ({ data: { pools: [] } })),
+    ]);
+
+    // 主数据源: /api/v1/pools（保证完整性）
+    const pools = poolsData.data || [];
+    // 补充数据源: /api/v1/overview（提供 pool_signal/pool_analysis）
+    const overviewPoolsIdx = new Map<string | number, any>(
+      (overviewData?.data?.pools || []).map(p => [p.id, p]),
+    );
 
     // Step 2: 获取每个池的股票列表，收集所有股票代码
     const allCodes: string[] = [];
@@ -193,8 +208,9 @@ router.get('/overview', async (_req: Request, res: Response) => {
       priceMap = await fetchTencentPrices([...new Set(allCodes)]);
     }
 
-    // Step 5: 组装结果
+    // Step 5: 组装结果（从 /api/v1/pools 保证完整性，从 /api/v1/overview 补充概览字段）
     const results: StockPool[] = pools.map((p: any) => {
+      const overviewPool = overviewPoolsIdx.get(p.id);
       const rawStocks = poolStocksMap.get(p.id) || [];
       const stocks: PoolStock[] = rawStocks.map((s: any) => {
         const price = priceMap.get(s.code);
@@ -230,8 +246,9 @@ router.get('/overview', async (_req: Request, res: Response) => {
         name: p.name || '',
         description: p.desc || '',
         updated_at: p.updatedAt || '',
-        pool_signal: p.poolSignal ?? null,
-        pool_analysis: p.poolAnalysis ?? null,
+        // pool_signal/pool_analysis 优先从 overview 取（如有），否则用 /api/v1/pools 的值
+        pool_signal: overviewPool?.poolSignal ?? p.poolSignal ?? null,
+        pool_analysis: overviewPool?.poolAnalysis ?? p.poolAnalysis ?? null,
         stocks,
       };
     });
