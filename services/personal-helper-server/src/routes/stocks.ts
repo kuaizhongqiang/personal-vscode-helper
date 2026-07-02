@@ -135,15 +135,14 @@ interface StockPool {
  *
  * 数据来源（Fi-Pool-Manager + 腾讯实时价格）:
  *   1. Fi-PM /api/v1/pools              → 股池列表（保证完整）
- *   2. Fi-PM /api/v1/overview           → pool_signal/pool_analysis 等概览字段（合并补充）
- *   3. Fi-PM /api/v1/pools/{id}/stocks  → 股票列表
- *   4. Fi-PM /api/v1/analysis/batch     → 按股票代码获取最新分析
- *   5. 腾讯财经 qt.gtimg.cn             → 实时价格（仅交易时段）
+ *   2. Fi-PM /api/v1/overview           → 池级字段 + stocks[{code,name}]（消除 N+1）
+ *   3. Fi-PM /api/v1/analysis/batch     → 按股票代码获取最新分析
+ *   4. 腾讯财经 qt.gtimg.cn             → 实时价格（仅交易时段）
  *
- * 注意: 同时调用 /api/v1/pools 和 /api/v1/overview 是因为
- *   /api/v1/pools 保证返回全部股池（无过滤），
- *   /api/v1/overview 提供 pool_signal/pool_analysis 等概览级字段。
- *   两者取并集合并，确保不丢池。
+ * 注意:
+ *   - /api/v1/overview（Fi-PM#128）已内置 stocks 数组，无需逐池请求
+ *   - 同时调用 /api/v1/pools 作为主数据源保障完整性（/api/v1/overview 可能过滤池）
+ *   - 两者取并集合并：pools（完整性）+ overview（stocks + pool_signal/pool_analysis）
  *
  * 缓存: 60s
  */
@@ -155,7 +154,7 @@ router.get('/overview', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Step 1: 获取完整股池列表（/api/v1/pools 保证返回全部）+ 概览字段（/api/v1/overview）
+    // Step 1: 并行获取池列表 + 概览（含 stocks）
     const [poolsData, overviewData] = await Promise.all([
       fipFetch<{ data: any[] }>('/api/v1/pools').catch(() => ({ data: [] })),
       fipFetch<{ data: { pools: any[] } }>('/api/v1/overview').catch(() => ({ data: { pools: [] } })),
@@ -163,25 +162,38 @@ router.get('/overview', async (_req: Request, res: Response) => {
 
     // 主数据源: /api/v1/pools（保证完整性）
     const pools = poolsData.data || [];
-    // 补充数据源: /api/v1/overview（提供 pool_signal/pool_analysis）
+    // 补充数据源: /api/v1/overview（含 stocks, pool_signal, pool_analysis）
     const overviewPoolsIdx = new Map<string | number, any>(
       (overviewData?.data?.pools || []).map(p => [p.id, p]),
     );
 
-    // Step 2: 获取每个池的股票列表，收集所有股票代码
+    // Step 2: 收集股票代码（优先从 overview.stocks 取，消除 N+1；降级则逐池请求）
     const allCodes: string[] = [];
     const poolStocksMap = new Map<number, any[]>();
 
-    for (const p of pools) {
-      try {
-        const stockListData = await fipFetch<{ data: any[] }>(`/api/v1/pools/${p.id}/stocks`);
-        const rawStocks: any[] = stockListData.data || [];
-        poolStocksMap.set(p.id, rawStocks);
-        for (const s of rawStocks) {
+    if (overviewPoolsIdx.size > 0) {
+      // 主路径: overview 已内置 stocks（Fi-PM#128），零额外请求
+      for (const p of pools) {
+        const op = overviewPoolsIdx.get(p.id);
+        const stocks = op?.stocks || [];
+        poolStocksMap.set(p.id, stocks);
+        for (const s of stocks) {
           if (s.code) allCodes.push(s.code);
         }
-      } catch {
-        poolStocksMap.set(p.id, []);
+      }
+    } else {
+      // 降级路径: overview 不可用，逐池请求（N+1）
+      for (const p of pools) {
+        try {
+          const stockListData = await fipFetch<{ data: any[] }>(`/api/v1/pools/${p.id}/stocks`);
+          const rawStocks: any[] = stockListData.data || [];
+          poolStocksMap.set(p.id, rawStocks);
+          for (const s of rawStocks) {
+            if (s.code) allCodes.push(s.code);
+          }
+        } catch {
+          poolStocksMap.set(p.id, []);
+        }
       }
     }
 
@@ -208,7 +220,7 @@ router.get('/overview', async (_req: Request, res: Response) => {
       priceMap = await fetchTencentPrices([...new Set(allCodes)]);
     }
 
-    // Step 5: 组装结果（从 /api/v1/pools 保证完整性，从 /api/v1/overview 补充概览字段）
+    // Step 5: 组装结果（池骨架来自 /api/v1/pools，stocks/概览字段来自 /api/v1/overview）
     const results: StockPool[] = pools.map((p: any) => {
       const overviewPool = overviewPoolsIdx.get(p.id);
       const rawStocks = poolStocksMap.get(p.id) || [];
@@ -246,7 +258,7 @@ router.get('/overview', async (_req: Request, res: Response) => {
         name: p.name || '',
         description: p.desc || '',
         updated_at: p.updatedAt || '',
-        // pool_signal/pool_analysis 优先从 overview 取（如有），否则用 /api/v1/pools 的值
+        // pool_signal/pool_analysis 优先从 overview 取（含 stocks），否则用 /api/v1/pools 的值
         pool_signal: overviewPool?.poolSignal ?? p.poolSignal ?? null,
         pool_analysis: overviewPool?.poolAnalysis ?? p.poolAnalysis ?? null,
         stocks,
